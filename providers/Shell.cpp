@@ -3,16 +3,15 @@
 #include <stdlib.h>
 #include <QDBusInterface>
 #include <QDir>
+#include <klocalizedstring.h>
 
 
 Shell::Shell()
 {
-    int len;
     this->index = QHash<QString, QString>();
     foreach(QString dir, getPathEnv())
     {
         this->index.unite(walkDir(dir));
-        len = this->index.size();
     }
 }
 
@@ -35,6 +34,7 @@ QList<Application> Shell::getResults(QString query)
             app.icon = "system-run";
             app.object = this;
             app.program = this->index[key] + args;
+            app.type = i18n("Shell command");
 
             list.append(app);
         }

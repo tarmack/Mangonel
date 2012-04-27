@@ -4,6 +4,11 @@
 #include <QObject>
 #include <QVariant>
 
+struct popularity
+{
+    int lastUse;
+    int count;
+};
 
 class Application;
 
@@ -29,6 +34,7 @@ struct Application
     int priority;
     QVariant program;
     Provider* object; //Pointer to the search provider that provided this result.
+    QString type;
 };
 
 #endif // Provider_H

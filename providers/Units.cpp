@@ -5,6 +5,7 @@
 #include <QRegExp>
 #include <QClipboard>
 #include <QApplication>
+#include <klocalizedstring.h>
 
 Units::Units()
 {}
@@ -15,7 +16,7 @@ Units::~Units()
 QList< Application > Units::getResults(QString query)
 {
     QList<Application> list = QList<Application>();
-    QRegExp patern = QRegExp("(.+)\\s+(?:\=|to|is)\\s+(.+)$", Qt::CaseInsensitive);
+    QRegExp patern = QRegExp("(.+)\\s+(?:\\=|to|is)\\s+(.+)$", Qt::CaseInsensitive);
     if (query.contains(patern) && patern.captureCount() == 2)
     {
             Application result = Application();
@@ -39,7 +40,8 @@ QList< Application > Units::getResults(QString query)
             result.name = QString(units_check_exception());
             result.program = result.name;
         }
-            list.append(result);
+        result.type = i18n("Unit conversion");
+        list.append(result);
     }
     return list;
 }

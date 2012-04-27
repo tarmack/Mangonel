@@ -16,55 +16,58 @@
 #include "providers/Shell.h"
 #include "providers/Calculator.h"
 #include "providers/Units.h"
+#include "providers/ControlModules.h"
 
+#include <unistd.h>
 
 #define WINDOW_WIDTH 220
 #define WINDOW_HEIGHT 200
 
 Mangonel::Mangonel(KApplication* app)
 {
-    this->setWindowFlags(Qt::Tool | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint);
-    this->setContextMenuPolicy(Qt::ActionsContextMenu);
-    this->setAttribute(Qt::WA_InputMethodEnabled);
-    this->setAttribute(Qt::WA_MouseTracking, false);
-    this->app = app;
-    this->processingKey = false;
-    this->apps = 0;
+    setWindowFlags(Qt::Tool | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint);
+    setContextMenuPolicy(Qt::ActionsContextMenu);
+    setAttribute(Qt::WA_InputMethodEnabled);
+    setAttribute(Qt::WA_MouseTracking, false);
+    app = app;
+    m_processingKey = false;
+    m_apps = 0;
     QVBoxLayout* view = new QVBoxLayout(this);
-    this->setLayout(view);
+    setLayout(view);
     view->setContentsMargins(0,10,0,8);
     // Setup the search feedback label.
-    this->label = new Label(this);
+    m_label = new Label(this);
     // Instantiate the visual feedback field.
-    this->iconView = new IconView(this);
+    m_iconView = new IconView(this);
     // Add all to our layout.
-    view->addWidget(this->iconView);
-    view->addWidget(this->label);
-    this->resize(WINDOW_WIDTH, WINDOW_HEIGHT);
-    this->label->setMaximumWidth(WINDOW_WIDTH - 20);
+    view->addWidget(m_iconView);
+    view->addWidget(m_label);
+    resize(WINDOW_WIDTH, WINDOW_HEIGHT);
+    m_label->setMaximumWidth(WINDOW_WIDTH - 20);
 
     // Setup our global shortcut.
-    actionShow = new KAction(QString("Show Mangonel"), this);
-    actionShow->setObjectName(QString("show"));
-    KShortcut shortcut = actionShow->shortcut();
+    m_actionShow = new KAction(QString("Show Mangonel"), this);
+    m_actionShow->setObjectName(QString("show"));
+    KShortcut shortcut = m_actionShow->shortcut();
     shortcut.setPrimary(QKeySequence(Qt::CTRL | Qt::ALT | Qt::Key_Space));
-    actionShow->setGlobalShortcut(shortcut);
-    this->connect(actionShow, SIGNAL(triggered()), this, SLOT(showHide()));
+    m_actionShow->setGlobalShortcut(shortcut);
+    connect(m_actionShow, SIGNAL(triggered()), this, SLOT(showHide()));
 
     // TODO: Get the stored history.
 
     // Instantiate the providers.
-    this->providers["applications"] = new Applications();
-    this->providers["paths"] = new Paths();
-    this->providers["shell"] = new Shell();
-    this->providers["Calculator"] = new Calculator();
-    this->providers["Units"] = new Units();
+    m_providers["applications"] = new Applications();
+    m_providers["paths"] = new Paths();
+    m_providers["shell"] = new Shell();
+    m_providers["Calculator"] = new Calculator();
+    m_providers["Units"] = new Units();
+    m_providers["ControlModules"] = new ControlModules();
 
-    this->connect(this->label, SIGNAL(textChanged(QString)), this, SLOT(getApp(QString)));
+    connect(m_label, SIGNAL(textChanged(QString)), this, SLOT(getApp(QString)));
     
     QAction* actionConfig = new QAction(KIcon("configure"), "Configuration", this);
-    this->addAction(actionConfig);
-    this->connect(actionConfig, SIGNAL(triggered(bool)), this, SLOT(showConfig()));
+    addAction(actionConfig);
+    connect(actionConfig, SIGNAL(triggered(bool)), this, SLOT(showConfig()));
 }
 
 Mangonel::~Mangonel()
@@ -80,18 +83,18 @@ bool Mangonel::event(QEvent* event)
         if (mouseEvent->button() == Qt::MiddleButton)
         {
             event->accept();
-            this->label->appendText(QApplication::clipboard()->text(QClipboard::Selection));
+            m_label->appendText(QApplication::clipboard()->text(QClipboard::Selection));
         }
-        else if (!this->geometry().contains(mouseEvent->globalPos()))
+        else if (!geometry().contains(mouseEvent->globalPos()))
         {
-            this->hide();
+            hide();
             event->accept();
         }
     }
     else if (event->type() == QEvent::ContextMenu)
     {
         QContextMenuEvent* menuEvent = static_cast<QContextMenuEvent*> (event);
-        if (!this->geometry().contains(menuEvent->globalPos()))
+        if (!geometry().contains(menuEvent->globalPos()))
             event->accept();
     }
     if (!event->isAccepted())
@@ -101,163 +104,165 @@ bool Mangonel::event(QEvent* event)
 
 void Mangonel::inputMethodEvent(QInputMethodEvent* event)
 {
-    QString text = this->label->text();
+    QString text = m_label->text();
     text.chop(event->preeditString().length());
     text = text.mid(0, text.length()+event->replacementStart());
     text.append(event->commitString());
     if (text == "~/")
         text = "";
     text.append(event->preeditString());
-    this->label->setPreEdit(event->preeditString());
-    this->label->setText(text);
+    m_label->setPreEdit(event->preeditString());
+    m_label->setText(text);
 }
 void Mangonel::keyPressEvent(QKeyEvent* event)
 {
     int key = event->key();
     IconView::direction direction = IconView::right;
     Application* CurrentApp;
-    if (this->processingKey)
+    if (m_processingKey)
         return;
-    this->processingKey = true;
+    m_processingKey = true;
     switch (event->key())
     {
     case Qt::Key_Enter:
     case Qt::Key_Return:
-        this->launch();
+        launch();
     case Qt::Key_Escape:
-        this->hide();
+        hide();
         break;
     case Qt::Key_Up:
-        this->historyIndex += 2;
+        m_historyIndex += 2;
     case Qt::Key_Down:
-        this->historyIndex -= 1;
-        if (this->historyIndex >= 0)
+        m_historyIndex -= 1;
+        if (m_historyIndex >= 0)
         {
-            if (this->historyIndex < this->history.length())
-                this->label->setText(this->history[this->historyIndex]);
+            if (m_historyIndex < m_history.length())
+                m_label->setText(m_history[m_historyIndex]);
         }
         else
-            this->historyIndex = -1;
+            m_historyIndex = -1;
         break;
     case Qt::Key_Left:
         direction = IconView::left;
     case Qt::Key_Right:
-        this->iconView->moveItems(direction);
-        CurrentApp = this->iconView->selectedApp();
+        m_iconView->moveItems(direction);
+        CurrentApp = m_iconView->selectedApp();
         if (CurrentApp != 0)
-            this->label->setCompletion(CurrentApp->completion);
+            m_label->setCompletion(CurrentApp->completion);
         break;
     default:
         if (key == Qt::Key_Tab)
         {
-            if (!this->label->completion().isEmpty())
-                this->label->setText(this->label->completion());
+            if (!m_label->completion().isEmpty())
+                m_label->setText(m_label->completion());
         }
         else if (key == Qt::Key_Backspace)
         {
-            QString text = this->label->text();
+            QString text = m_label->text();
             text.chop(1);
             if (text == "~/")
                 text = "";
-            this->label->setText(text);
+            m_label->setText(text);
         }
         else if (event->matches(QKeySequence::Paste))
         {
-            this->label->appendText(QApplication::clipboard()->text());
+            m_label->appendText(QApplication::clipboard()->text());
         }
         else
         {
-            this->label->appendText(event->text());
+            m_label->appendText(event->text());
         }
     }
-    this->processingKey = false;
+    m_processingKey = false;
 }
 
 void Mangonel::getApp(QString query)
 {
-    this->iconView->clear();
-    delete this->apps;
-    this->apps = 0;
+    m_iconView->clear();
+    delete m_apps;
+    m_apps = 0;
     if (query.length() > 0)
     {
-        this->apps = new AppList();
-        this->current = -1;
-        foreach(Provider* provider, this->providers)
+        m_apps = new AppList();
+        m_current = -1;
+        foreach(Provider* provider, m_providers)
         {
             QList<Application> list = provider->getResults(query);
             foreach(Application app, list)
-                this->apps->insertSorted(app);
+                m_apps->insertSorted(app);
         }
-        if (!this->apps->isEmpty())
+        if (!m_apps->isEmpty())
         {
-            for (int i = 0; i < this->apps->length(); i++)
+            for (int i = 0; i < m_apps->length(); i++)
             {
-                this->iconView->addProgram(this->apps->at(i));
+                m_iconView->addProgram(m_apps->at(i));
             }
-            this->iconView->setFirst();
-            Application* CurrentApp = this->iconView->selectedApp();
+            m_iconView->setFirst();
+            Application* CurrentApp = m_iconView->selectedApp();
             if (CurrentApp != 0)
-                this->label->setCompletion(CurrentApp->completion);
+                m_label->setCompletion(CurrentApp->completion);
         }
         else
         {
-            this->label->setCompletion("");
+            m_label->setCompletion("");
         }
     }
 }
 
 void Mangonel::launch()
 {
-    this->history.insert(0, this->label->text());
-    Application* app = this->iconView->selectedApp();
+    m_history.insert(0, m_label->text());
+    Application* app = m_iconView->selectedApp();
     if (app != 0)
         app->object->launch(app->program);
 }
 
 void Mangonel::showHide()
 {
-    if (this->isVisible())
-        this->hide();
+    if (isVisible())
+        hide();
     else
-        this->show();
+        show();
 }
 
 void Mangonel::show()
 {
-    this->historyIndex = -1;
-    this->resize(WINDOW_WIDTH, WINDOW_HEIGHT);
-    QRect screen = this->app->desktop()->screenGeometry(this);
-    int x = (screen.width() - this->geometry().width()) / 2;
-    int y = (screen.height() - this->geometry().height()) / 2;
-    this->move(x, y);
+    resize(WINDOW_WIDTH, WINDOW_HEIGHT);
+    m_historyIndex = -1;
+    QRect screen = qApp->desktop()->screenGeometry(this);
+    int x = (screen.width() - geometry().width()) / 2;
+    int y = (screen.height() - geometry().height()) / 2;
+    move(x, y);
     QWidget::show();
-    KWindowSystem::forceActiveWindow(this->winId());
-    this->setFocus();
+    KWindowSystem::forceActiveWindow(winId());
+    setFocus();
 }
 
 void Mangonel::hide()
 {
-    this->label->setText("");
-    this->iconView->clear();
-    delete this->apps;
-    this->apps = 0;
+    m_label->setText("");
+    m_iconView->clear();
+    delete m_apps;
+    m_apps = 0;
     QWidget::hide();
 }
 
 void Mangonel::focusInEvent(QFocusEvent* event)
 {
-        this->grabMouse();
+    Q_UNUSED(event);
+    grabMouse();
 }
 
 void Mangonel::focusOutEvent(QFocusEvent* event)
 {
-    this->releaseMouse();
+    releaseMouse();
     if (event->reason() != Qt::PopupFocusReason)
-        this->hide();
+        hide();
 }
 
 bool Mangonel::eventFilter(QObject *object, QEvent *event)
 {
+    Q_UNUSED(object);
     if (event->type() == QEvent::FocusOut)
         return true;
     return false;
@@ -265,101 +270,102 @@ bool Mangonel::eventFilter(QObject *object, QEvent *event)
 
 void Mangonel::showConfig()
 {
-    KShortcut shortcut = actionShow->globalShortcut();
+    KShortcut shortcut = m_actionShow->globalShortcut();
     ConfigDialog* dialog = new ConfigDialog(this);
     dialog->setHotkey(shortcut.primary());
     connect(dialog, SIGNAL(hotkeyChanged(QKeySequence)), this, SLOT(setHotkey(QKeySequence)));
     installEventFilter(this);
-    this->releaseMouse();
+    releaseMouse();
     dialog->exec();
     removeEventFilter(this);
-    this->activateWindow();
-    this->setFocus();
+    activateWindow();
+    setFocus();
 }
 
 void Mangonel::setHotkey(const QKeySequence& hotkey)
 {
     KShortcut shortcut = KShortcut();
     shortcut.setPrimary(hotkey);
-    actionShow->setGlobalShortcut(shortcut, KAction::ShortcutTypes(KAction::ActiveShortcut|KAction::DefaultShortcut), KAction::NoAutoloading);
+    m_actionShow->setGlobalShortcut(shortcut, KAction::ShortcutTypes(KAction::ActiveShortcut|KAction::DefaultShortcut), KAction::NoAutoloading);
     qDebug() << hotkey.toString();
 }
 
 
-IconView::IconView(QWidget* parent) : current(-1)
+IconView::IconView(QWidget* parent) : m_current(-1)
 {
-    this->scene = new QGraphicsScene(QRectF(0, 0, this->rect().width()*4, this->rect().height()), this);
-    this->setScene(this->scene);
-    this->setFrameStyle(QFrame::NoFrame);
-    this->setStyleSheet("background: transparent; border: none");
-    this->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    this->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    this->setFocusPolicy(Qt::NoFocus);
-    this->centerOn(QPoint(this->rect().width()*1.5, 0));
+    Q_UNUSED(parent);
+    m_scene = new QGraphicsScene(QRectF(0, 0, rect().width()*4, rect().height()), this);
+    setScene(m_scene);
+    setFrameStyle(QFrame::NoFrame);
+    setStyleSheet("background: transparent; border: none");
+    setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    setFocusPolicy(Qt::NoFocus);
+    centerOn(QPoint(rect().width()*1.5, 0));
 }
 
 IconView::~IconView()
 {
-    delete this->scene;
+    delete m_scene;
 }
 
 void IconView::clear()
 {
-    this->scene->clear();
-    this->items.clear();
-    this->current = -1;
+    m_scene->clear();
+    m_items.clear();
+    m_current = -1;
 }
 
 void IconView::addProgram(Application application)
 {
     ProgramView* program = new ProgramView(application);
-    this->items.append(program);
-    this->scene->addItem(program);
+    m_items.append(program);
+    m_scene->addItem(program);
 }
 
 Application* IconView::selectedApp()
 {
-    if (this->current >= 0 and this->current < this->items.length())
+    if (m_current >= 0 and m_current < m_items.length())
     {
-        return &this->items[this->current]->application;
+        return &m_items[m_current]->application;
     }
     else return 0;
 }
 
 void IconView::setFirst()
 {
-    if (!this->items.empty())
-        this->current = 0;
-    this->items[this->current]->show();
-    this->items[this->current]->setPos(this->rect().width() + (this->rect().width() - 128) / 2, 0);
-    this->centerOn(QPoint(this->rect().width()*1.5, 0));
+    if (!m_items.empty())
+        m_current = 0;
+    m_items[m_current]->show();
+    m_items[m_current]->setPos(rect().width() + (rect().width() - 128) / 2, 0);
+    centerOn(QPoint(rect().width()*1.5, 0));
 }
 
 void IconView::moveItems(IconView::direction direction)
 {
-    if (this->current < 0)
+    if (m_current < 0)
         return;
-    int offset = this->rect().width();
+    int offset = rect().width();
     int steps =  10;
     int dx = offset / steps;
     int index = 1;
     if (direction == IconView::right)
     {
-        if (this->current + 1 >= this->items.length())
+        if (m_current + 1 >= m_items.length())
             return;
         dx = -dx;
         offset *= 2;
     }
     else
     {
-        if (this->current < 1)
+        if (m_current < 1)
             return;
         offset = 0;
         index = -1;
     }
-    ProgramView* itemOld = this->items[this->current];
-    ProgramView* itemNew = this->items[this->current+index];
-    itemNew->setPos(offset + (this->rect().width() - 128) / 2, 0);
+    ProgramView* itemNew = m_items[m_current+index];
+    ProgramView* itemOld = m_items[m_current];
+    itemNew->setPos(offset + (rect().width() - 128) / 2, 0);
     itemNew->show();
     int startposNew = itemNew->pos().x();
     int startPosOld = itemOld->pos().x();
@@ -387,68 +393,88 @@ void IconView::moveItems(IconView::direction direction)
         usleep(5000);
     }
     itemOld->hide();
-    itemNew->setPos(this->rect().width() + (this->rect().width() - 128) / 2, 0);
-    this->current += index;
-    this->centerOn(QPoint(this->rect().width()*1.5, 0));
+    itemNew->setPos(rect().width() + (rect().width() - 128) / 2, 0);
+    m_current += index;
+    centerOn(QPoint(rect().width()*1.5, 0));
 }
 
 
-ProgramView::ProgramView(Application application)
+ProgramView::ProgramView(Application app)
 {
-    this->hide();
-    this->icon = 0;
-    this->label = 0;
-    this->block = 0;
-    this->application = application;
+    hide();
+    m_icon = 0;
+    m_label = 0;
+    m_block = 0;
+    m_descriptionLabel = 0;
+    application = app;
 }
 
 ProgramView::~ProgramView()
 {
-    delete this->icon;
-    delete this->label;
-    delete this->block;
+    delete m_icon;
+    delete m_label;
+    delete m_block;
+    delete m_descriptionLabel;
 }
 
 void ProgramView::centerItems()
 {
-    this->icon->setPos(0, 0);
-    QRectF iconRect = this->icon->boundingRect();
-    QRectF labelRect = this->label->boundingRect();
-    QRectF blockRect = this->block->boundingRect();
-    this->block->setPos(
+    m_icon->setPos(0, 0);
+    QRectF iconRect = m_icon->boundingRect();
+    QRectF labelRect = m_label->boundingRect();
+    QRectF blockRect = m_block->boundingRect();
+    QRectF descriptionRect = m_descriptionLabel->boundingRect();
+    m_block->setPos(
         qreal(iconRect.width() / 2 - blockRect.width() / 2),
         qreal(iconRect.height() / 2 - blockRect.height() / 2)
     );
-    this->label->setPos(
+    m_label->setPos(
         qreal(iconRect.width() / 2 - labelRect.width() / 2),
         qreal(iconRect.height() / 2 - labelRect.height() / 2)
+    );
+    m_descriptionLabel->setPos(
+        qreal(iconRect.width() / 2 - descriptionRect.width() / 2),
+        qreal(iconRect.height() / 2 - descriptionRect.height() / 2 + labelRect.height())
     );
 }
 
 void ProgramView::show()
 {
-    if (this->icon == 0)
-        this->icon = new QGraphicsPixmapItem(KIcon(application.icon).pixmap(128), this);
-    if (this->label == 0)
+    if (m_icon == 0)
+        m_icon = new QGraphicsPixmapItem(KIcon(application.icon).pixmap(128), this);
+    if (m_label == 0)
     {
-        this->label = new QGraphicsTextItem(application.name, this);
-        if (this->label->boundingRect().width() > WINDOW_WIDTH - 40)
-            this->label->adjustSize();
-        this->label->document()->setDefaultTextOption(QTextOption(Qt::AlignCenter));
+        m_label = new QGraphicsTextItem(application.name, this);
+        if (m_label->boundingRect().width() > WINDOW_WIDTH - 40)
+            m_label->adjustSize();
+        m_label->document()->setDefaultTextOption(QTextOption(Qt::AlignCenter));
         QColor color = Plasma::Theme().color(Plasma::Theme::TextColor);
-        this->label->setDefaultTextColor(color);
+        m_label->setDefaultTextColor(color);
     }
-    if (this->block == 0)
+    if (m_descriptionLabel == 0)
     {
-        this->block = new QGraphicsRectItem(this->label->boundingRect(), this);
+        m_descriptionLabel = new QGraphicsTextItem("(" + application.type + ")", this);
+        if (m_descriptionLabel->boundingRect().width() > WINDOW_WIDTH - 40)
+            m_descriptionLabel->adjustSize();
+        m_descriptionLabel->document()->setDefaultTextOption(QTextOption(Qt::AlignCenter));
+        QColor color = Plasma::Theme().color(Plasma::Theme::TextColor);
+        m_descriptionLabel->setDefaultTextColor(color);
+    }
+    if (m_block == 0)
+    {
+        QRectF nameRect = m_label->boundingRect();
+        QRectF descriptionRect = m_descriptionLabel->boundingRect();
+        QRectF rect(nameRect.x(), nameRect.y() +10, qMax(nameRect.width(), descriptionRect.width()), nameRect.height() + descriptionRect.height() + 5);
+        m_block = new QGraphicsRectItem(rect, this);
         QBrush brush = QBrush(Qt::SolidPattern);
         QColor color = Plasma::Theme().color(Plasma::Theme::BackgroundColor);
         brush.setColor(color);
-        this->block->setBrush(brush);
-        this->block->setOpacity(0.7);
+        m_block->setBrush(brush);
+        m_block->setOpacity(0.7);
     }
-    this->label->setZValue(10);
-    this->centerItems();
+    m_label->setZValue(10);
+    m_descriptionLabel->setZValue(10);
+    centerItems();
     QGraphicsItemGroup::show();
 }
 
@@ -459,16 +485,16 @@ AppList::AppList()
 AppList::~AppList()
 {}
 
-void AppList::insertSorted(Application value)
+void AppList::insertSorted(Application item)
 {
-    int index = this->length() / 2;
-    if (this->length() > 0)
+    int index = length() / 2;
+    if (length() > 0)
     {
-        int span = 1 + this->length() / 2;
-        int priority = value.priority;
-        int item = this->value(index).priority;
+        int span = 1 + length() / 2;
+        int priority = item.priority;
+        int item = value(index).priority;
         while (!(
-                    priority > this->value(index - 1).priority and
+                    priority > value(index - 1).priority and
                     priority <= item
                 ))
         {
@@ -482,15 +508,15 @@ void AppList::insertSorted(Application value)
                 index = 0;
                 break;
             }
-            if (index >= this->length())
+            if (index >= length())
             {
-                index = this->length();
+                index = length();
                 break;
             }
-            item = this->value(index).priority;
+            item = value(index).priority;
         }
     }
-    this->insert(index, value);
+    insert(index, item);
 }
 
 
