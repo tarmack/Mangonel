@@ -23,9 +23,10 @@ public:
     void centerItems();
     Application application;
 private:
-    QGraphicsPixmapItem* icon;
-    QGraphicsTextItem* label;
-    QGraphicsRectItem* block;
+    QGraphicsPixmapItem* m_icon;
+    QGraphicsTextItem* m_label;
+    QGraphicsTextItem* m_descriptionLabel;
+    QGraphicsRectItem* m_block;
 };
 
 class IconView : public QGraphicsView
@@ -42,9 +43,9 @@ public:
     void setFirst();
     Label* label;
 private:
-    QList<ProgramView*> items;
-    QGraphicsScene* scene;
-    int current;
+    QList<ProgramView*> m_items;
+    QGraphicsScene* m_scene;
+    int m_current;
 };
 
 class AppList : public QList<Application>
@@ -64,29 +65,29 @@ public:
 public slots:
     void show();
     void hide();
-private:
-    KAction* actionShow;
-    bool processingKey;
-    QApplication* app;
-    Label* label;
-    IconView* iconView;
-    int historyIndex;
-    QStringList history;
-    QHash<QString, Provider*> providers;
-    AppList* apps;
-    int current;
-    bool event(QEvent* event);
-    void inputMethodEvent(QInputMethodEvent* event);
-    void keyPressEvent(QKeyEvent* event);
-    void focusInEvent(QFocusEvent* event);
-    void focusOutEvent(QFocusEvent* event);
-    bool eventFilter(QObject *object, QEvent *event);
 private slots:
     void launch();
     void getApp(QString query);
     void showHide();
     void showConfig();
     void setHotkey(const QKeySequence& hotkey);
+private:
+    bool event(QEvent* event);
+    void inputMethodEvent(QInputMethodEvent* event);
+    void keyPressEvent(QKeyEvent* event);
+    void focusInEvent(QFocusEvent* event);
+    void focusOutEvent(QFocusEvent* event);
+    bool eventFilter(QObject *object, QEvent *event);
+    
+    KAction* m_actionShow;
+    bool m_processingKey;
+    Label* m_label;
+    IconView* m_iconView;
+    int m_historyIndex;
+    QStringList m_history;
+    QHash<QString, Provider*> m_providers;
+    AppList* m_apps;
+    int m_current;
 };
 
 #endif // Mangonel_H
